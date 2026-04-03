@@ -21,7 +21,7 @@ class BoosterSystem(commands.Cog):
             CREATE TABLE IF NOT EXISTS booster_settings (
                 user_id INTEGER PRIMARY KEY,
                 guild_id INTEGER,
-                role_name TEXT DEFAULT '🌟 Бустер',
+                role_name TEXT DEFAULT 'Бустер',
                 color_r INTEGER DEFAULT 255,
                 color_g INTEGER DEFAULT 215,
                 color_b INTEGER DEFAULT 0,
@@ -86,6 +86,21 @@ class BoosterSystem(commands.Cog):
 
         if booster_role and booster_role in member.roles:
             await member.remove_roles(booster_role, reason="Пользователь перестал бустить сервер")
+        
+        # Также удаляем кастомную роль бустера
+        cursor = self.db.cursor()
+        cursor.execute('''
+            SELECT role_name, role_icon
+            FROM booster_settings
+            WHERE user_id = ? AND guild_id = ?
+        ''', (member.id, member.guild.id))
+        
+        result = cursor.fetchone()
+        if result:
+            custom_role_name = f"{result[1]} {result[0]}"
+            custom_role = disnake.utils.get(member.guild.roles, name=custom_role_name)
+            if custom_role:
+                await custom_role.delete(reason="Пользователь перестал бустить сервер")
 
     async def apply_booster_settings(self, member: disnake.Member):
         """Применить сохраненные настройки бустера"""
@@ -101,36 +116,43 @@ class BoosterSystem(commands.Cog):
         if result:
             role_name, color_r, color_g, color_b, second_color_r, second_color_g, second_color_b, role_icon = result
 
-            # Получаем роль бустера
+            # Формируем название кастомной роли
+            new_role_name = f"{role_icon} {role_name}"
+            
+            # Ищем существующую кастомную роль
+            custom_role = disnake.utils.get(member.guild.roles, name=new_role_name)
+            
+            # Получаем стандартную роль бустера
             booster_role = disnake.utils.get(member.guild.roles, name=self.booster_role_name)
-
-            if booster_role:
-                # Создаем новую роль с настройками
-                new_role_name = f"{role_icon} {role_name}"
-
-                # Проверяем, существует ли уже кастомная роль
-                custom_role = disnake.utils.get(member.guild.roles, name=new_role_name)
-
-                if not custom_role:
-                    # Создаем новую роль
-                    custom_role = await member.guild.create_role(
-                        name=new_role_name,
-                        color=disnake.Color.from_rgb(color_r, color_g, color_b),
-                        reason=f"Настройка роли бустера для {member.name}"
-                    )
-
-                    # Удаляем старую роль бустера
-                    if booster_role in member.roles:
+            
+            if custom_role:
+                # Обновляем существующую роль
+                await custom_role.edit(
+                    name=new_role_name,
+                    color=disnake.Color.from_rgb(color_r, color_g, color_b)
+                )
+                # Убеждаемся, что пользователь имеет эту роль
+                if custom_role not in member.roles:
+                    if booster_role and booster_role in member.roles:
                         await member.remove_roles(booster_role)
-
-                    # Добавляем новую роль
                     await member.add_roles(custom_role)
-                else:
-                    # Обновляем существующую роль
-                    await custom_role.edit(
-                        name=new_role_name,
-                        color=disnake.Color.from_rgb(color_r, color_g, color_b)
-                    )
+            else:
+                # Создаем новую роль
+                custom_role = await member.guild.create_role(
+                    name=new_role_name,
+                    color=disnake.Color.from_rgb(color_r, color_g, color_b),
+                    reason=f"Настройка роли бустера для {member.name}"
+                )
+                
+                # Меняем роли
+                if booster_role and booster_role in member.roles:
+                    await member.remove_roles(booster_role)
+                await member.add_roles(custom_role)
+        else:
+            # Если настроек нет, выдаем стандартную роль
+            booster_role = disnake.utils.get(member.guild.roles, name=self.booster_role_name)
+            if booster_role and booster_role not in member.roles:
+                await member.add_roles(booster_role)
 
     @commands.slash_command(name="donaterole", description="Настройка своей роли бустера")
     async def donaterole(
@@ -146,8 +168,26 @@ class BoosterSystem(commands.Cog):
 
         # Проверяем, является ли пользователь бустером
         booster_role = disnake.utils.get(interaction.guild.roles, name=self.booster_role_name)
-
-        if not booster_role or booster_role not in interaction.author.roles:
+        
+        # Проверяем наличие кастомной роли
+        cursor = self.db.cursor()
+        cursor.execute('SELECT role_name, role_icon FROM booster_settings WHERE user_id = ? AND guild_id = ?',
+                       (interaction.author.id, interaction.guild.id))
+        existing_settings = cursor.fetchone()
+        
+        # Проверяем, есть ли у пользователя роль бустера
+        has_booster_role = False
+        
+        if booster_role and booster_role in interaction.author.roles:
+            has_booster_role = True
+        elif existing_settings:
+            # Проверяем, может у пользователя уже есть кастомная роль
+            custom_role_name = f"{existing_settings[1]} {existing_settings[0]}"
+            custom_role = disnake.utils.get(interaction.guild.roles, name=custom_role_name)
+            if custom_role and custom_role in interaction.author.roles:
+                has_booster_role = True
+        
+        if not has_booster_role:
             await interaction.response.send_message(
                 "❌ Эта команда доступна только для бустеров сервера!\n"
                 "Станьте бустером, чтобы получить доступ к настройке роли.",
@@ -261,34 +301,44 @@ class BoosterSystem(commands.Cog):
 
         # Проверяем, является ли пользователь бустером
         booster_role = disnake.utils.get(interaction.guild.roles, name=self.booster_role_name)
+        
+        # Проверяем наличие кастомной роли
+        cursor = self.db.cursor()
+        cursor.execute('SELECT role_name, role_icon FROM booster_settings WHERE user_id = ? AND guild_id = ?',
+                       (interaction.author.id, interaction.guild.id))
+        result = cursor.fetchone()
+        
+        has_booster_role = False
+        
+        if booster_role and booster_role in interaction.author.roles:
+            has_booster_role = True
+        elif result:
+            custom_role_name = f"{result[1]} {result[0]}"
+            custom_role = disnake.utils.get(interaction.guild.roles, name=custom_role_name)
+            if custom_role and custom_role in interaction.author.roles:
+                has_booster_role = True
 
-        if not booster_role or booster_role not in interaction.author.roles:
+        if not has_booster_role:
             await interaction.response.send_message(
                 "❌ Эта команда доступна только для бустеров сервера!",
                 ephemeral=True
             )
             return
 
+        # Удаляем кастомную роль
+        if result:
+            custom_role_name = f"{result[1]} {result[0]}"
+            custom_role = disnake.utils.get(interaction.guild.roles, name=custom_role_name)
+            if custom_role and custom_role in interaction.author.roles:
+                await interaction.author.remove_roles(custom_role)
+                await custom_role.delete(reason="Сброс настроек роли бустера")
+
         # Удаляем настройки из базы
-        cursor = self.db.cursor()
         cursor.execute('''
             DELETE FROM booster_settings
             WHERE user_id = ? AND guild_id = ?
         ''', (interaction.author.id, interaction.guild.id))
         self.db.commit()
-
-        # Сбрасываем роль
-        # Находим кастомную роль
-        cursor.execute('SELECT role_name, role_icon FROM booster_settings WHERE user_id = ? AND guild_id = ?',
-                       (interaction.author.id, interaction.guild.id))
-        result = cursor.fetchone()
-
-        if result:
-            old_role_name = f"{result[1]} {result[0]}"
-            custom_role = disnake.utils.get(interaction.guild.roles, name=old_role_name)
-
-            if custom_role:
-                await custom_role.delete(reason="Сброс настроек роли бустера")
 
         # Выдаем стандартную роль
         default_role = disnake.utils.get(interaction.guild.roles, name=self.booster_role_name)
@@ -308,12 +358,25 @@ class BoosterSystem(commands.Cog):
         """Показать список всех бустеров"""
 
         booster_role = disnake.utils.get(interaction.guild.roles, name=self.booster_role_name)
-
-        if not booster_role:
-            await interaction.response.send_message("❌ На сервере нет бустеров!", ephemeral=True)
-            return
-
-        boosters = [member for member in interaction.guild.members if booster_role in member.roles]
+        
+        # Собираем всех бустеров (с кастомными ролями и стандартной)
+        boosters = []
+        
+        if booster_role:
+            boosters.extend([member for member in interaction.guild.members if booster_role in member.roles])
+        
+        # Добавляем пользователей с кастомными ролями
+        cursor = self.db.cursor()
+        cursor.execute('SELECT user_id, role_name, role_icon FROM booster_settings WHERE guild_id = ?', (interaction.guild.id,))
+        settings = cursor.fetchall()
+        
+        for user_id, role_name, role_icon in settings:
+            custom_role_name = f"{role_icon} {role_name}"
+            custom_role = disnake.utils.get(interaction.guild.roles, name=custom_role_name)
+            if custom_role:
+                for member in custom_role.members:
+                    if member not in boosters:
+                        boosters.append(member)
 
         if not boosters:
             await interaction.response.send_message("❌ На сервере нет бустеров!", ephemeral=True)
@@ -327,19 +390,17 @@ class BoosterSystem(commands.Cog):
 
         booster_list = []
         for booster in boosters:
-            # Получаем кастомную роль бустера
-            custom_role = None
-            for role in booster.roles:
-                if role.name != self.booster_role_name and booster_role in booster.roles:
-                    custom_role = role
-                    break
-
-            if custom_role:
-                booster_list.append(f"{custom_role.mention} - бустит с <t:{int(booster.premium_since.timestamp())}:R>")
-            else:
+            if booster.premium_since:
                 booster_list.append(f"{booster.mention} - бустит с <t:{int(booster.premium_since.timestamp())}:R>")
+            else:
+                booster_list.append(f"{booster.mention}")
 
-        embed.description = "\n".join(booster_list)
+        # Разбиваем на страницы если нужно
+        if len(booster_list) > 20:
+            embed.description = "\n".join(booster_list[:20])
+            embed.set_footer(text=f"И ещё {len(booster_list) - 20} бустеров...")
+        else:
+            embed.description = "\n".join(booster_list)
 
         await interaction.response.send_message(embed=embed)
 
