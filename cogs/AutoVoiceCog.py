@@ -11,17 +11,17 @@ CATEGORY_ID = 1489213690585813123
 TRIGGER_CHANNELS = {
     1489212953168445481: {  # Канал для создания дуо каналов
         "limit": 2,
-        "name_template": "🎤 Duo-{number}",
+        "name_template": "🎤 Дуо-{number}",
         "prefix": "Duo"
     },
     1489212987951681606: {  # Канал для создания трио каналов
         "limit": 3,
-        "name_template": "🎤 Trio-{number}",
+        "name_template": "🎤 Трио-{number}",
         "prefix": "Trio"
     },
     1489213431910502470: {  # Канал для создания квартет каналов
         "limit": 4,
-        "name_template": "🎤 Quartet-{number}",
+        "name_template": "🎤 Сквад-{number}",
         "prefix": "Quartet"
     }
 }
