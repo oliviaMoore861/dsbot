@@ -51,5 +51,21 @@ for file in os.listdir("./cogs"):
         except Exception as e:
             print(f"❌ Ошибка {file}: {e}")
 
+
+from flask import Flask
+import threading
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Бот работает!"
+
+def run():
+    app.run(host='0.0.0.0', port=10000)
+
+threading.Thread(target=run).start()
+
+
 if __name__ == "__main__":
     bot.run(os.getenv("TOKEN"))
