@@ -52,4 +52,4 @@ for file in os.listdir("./cogs"):
             print(f"❌ Ошибка {file}: {e}")
 
 if __name__ == "__main__":
-    bot.run('MTQ4Nzc0MzI4MzA0NzQzNjI5OA.Gx7b1D.rWacMGNieRK5EgBhV-UqXo-8OGcbzpZj4kyep0')
+    bot.run(os.getenv("TOKEN"))
