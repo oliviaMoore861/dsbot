@@ -17,17 +17,15 @@ class EconomySystem(commands.Cog):
         self.check_work_reset.start()
         self.active_riddle = None
         self.riddle_solved = False
-        self.last_riddle_time = None
         
-        # Запускаем таск для автоматической смены загадки каждые 30 минут
-        self.auto_riddle.start()
+        # Запускаем автоматическую публикацию загадок
+        self.post_riddle.start()
 
     def init_database(self):
         """Инициализация базы данных"""
         self.db = sqlite3.connect('economy.db')
         cursor = self.db.cursor()
 
-        # Таблица для баланса пользователей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS economy (
                 user_id INTEGER,
@@ -45,7 +43,6 @@ class EconomySystem(commands.Cog):
             )
         ''')
 
-        # Таблица для купленных ролей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS purchased_roles (
                 user_id INTEGER,
@@ -56,7 +53,6 @@ class EconomySystem(commands.Cog):
             )
         ''')
 
-        # Таблица для магазина ролей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS shop_roles (
                 role_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,14 +65,11 @@ class EconomySystem(commands.Cog):
         ''')
 
         self.db.commit()
-
-        # Добавляем роли в магазин
         self.init_shop_roles()
 
     def init_shop_roles(self):
         """Инициализация магазина ролей"""
         cursor = self.db.cursor()
-
         cursor.execute('SELECT COUNT(*) FROM shop_roles')
         count = cursor.fetchone()[0]
 
@@ -86,21 +79,17 @@ class EconomySystem(commands.Cog):
                 ("Kaif", 3000, "😎 Роль Kaif - для тех, кто получает кайф от жизни", "0xFF69B4"),
                 ("Kentik", 2000, "🤝 Роль Kentik - для настоящих кентов и друзей", "0x00FA9A")
             ]
-
             for name, price, desc, color in shop_roles:
                 cursor.execute('''
                     INSERT INTO shop_roles (guild_id, role_name, role_price, role_description, role_color)
                     VALUES (0, ?, ?, ?, ?)
                 ''', (name, price, desc, color))
-
             self.db.commit()
 
     def get_current_time(self):
-        """Получить текущее время"""
         return datetime.datetime.now(datetime.timezone.utc)
 
     async def send_log(self, guild: disnake.Guild, embed: disnake.Embed):
-        """Отправка лога"""
         try:
             channel = self.bot.get_channel(self.log_channel_id)
             if not channel:
@@ -110,17 +99,13 @@ class EconomySystem(commands.Cog):
             pass
 
     async def get_balance(self, user_id: int, guild_id: int) -> int:
-        """Получить баланс пользователя"""
         cursor = self.db.cursor()
-        cursor.execute('SELECT balance FROM economy WHERE user_id = ? AND guild_id = ?',
-                       (user_id, guild_id))
+        cursor.execute('SELECT balance FROM economy WHERE user_id = ? AND guild_id = ?', (user_id, guild_id))
         result = cursor.fetchone()
         return result[0] if result else 0
 
     async def update_balance(self, user_id: int, guild_id: int, amount: int):
-        """Обновить баланс пользователя"""
         cursor = self.db.cursor()
-
         cursor.execute('''
             INSERT INTO economy (user_id, guild_id, balance, total_earned)
             VALUES (?, ?, ?, ?)
@@ -128,13 +113,10 @@ class EconomySystem(commands.Cog):
             balance = balance + ?,
             total_earned = total_earned + ?
         ''', (user_id, guild_id, amount, amount, amount, amount))
-
         self.db.commit()
 
     async def remove_balance(self, user_id: int, guild_id: int, amount: int):
-        """Снять баланс пользователя"""
         cursor = self.db.cursor()
-
         cursor.execute('''
             INSERT INTO economy (user_id, guild_id, balance, total_spent)
             VALUES (?, ?, ?, ?)
@@ -142,13 +124,10 @@ class EconomySystem(commands.Cog):
             balance = balance - ?,
             total_spent = total_spent + ?
         ''', (user_id, guild_id, -amount, amount, amount, amount))
-
         self.db.commit()
 
     async def add_coins_for_activity(self, user_id: int, guild_id: int, coins: int, source: str):
-        """Добавление монет за активность"""
         await self.update_balance(user_id, guild_id, coins)
-
         user = await self.bot.fetch_user(user_id)
         if user:
             log_embed = disnake.Embed(
@@ -160,18 +139,19 @@ class EconomySystem(commands.Cog):
             log_embed.add_field(name="📝 Источник", value=source, inline=True)
             await self.send_log(await self.bot.fetch_guild(guild_id), log_embed)
 
+    # ==================== АВТОМАТИЧЕСКАЯ ПУБЛИКАЦИЯ ЗАГАДОК КАЖДЫЕ 30 МИНУТ ====================
+    
     @tasks.loop(minutes=30)
-    async def auto_riddle(self):
-        """Автоматическая публикация новой загадки каждые 30 минут"""
-        await asyncio.sleep(5)  # Ждем запуска бота
+    async def post_riddle(self):
+        """Публикует новую загадку каждые 30 минут"""
+        await asyncio.sleep(10)  # Ждем запуска бота
         while True:
             try:
                 channel = self.bot.get_channel(self.riddle_channel_id)
                 if channel:
-                    # Выбираем новую случайную загадку
+                    # Выбираем случайную загадку
                     self.active_riddle = random.choice(self.riddles)
                     self.riddle_solved = False
-                    self.last_riddle_time = self.get_current_time()
                     
                     embed = disnake.Embed(
                         title="🎯 НОВАЯ ЗАГАДКА BRAWL STARS! 🎯",
@@ -181,7 +161,7 @@ class EconomySystem(commands.Cog):
                     embed.set_footer(text="Ответь правильно и получи 150 монет! | Следующая загадка через 30 минут")
                     await channel.send(embed=embed)
                     
-                    # Логируем новую загадку
+                    # Логируем
                     log_embed = disnake.Embed(
                         title="🎯 Новая загадка",
                         color=disnake.Color.blue(),
@@ -203,191 +183,78 @@ class EconomySystem(commands.Cog):
     async def check_work_reset(self):
         pass
 
-    # ==================== НОВЫЕ ЗАГАДКИ ПРО BRAWL STARS ====================
+    # ==================== ЗАГАДКИ ПРО BRAWL STARS ====================
     
     @property
     def riddles(self):
-        """Коллекция загадок о Brawl Stars"""
         return [
-            # Вопросы о режимах
-            {
-                "question": "В каком режиме нужно собрать 10 кристаллов, появляющихся в центре карты?",
-                "answer": "Захват кристаллов",
-                "hint": "Gem Grab"
-            },
-            {
-                "question": "Как называется режим, где нужно выбить всех врагов из зоны, которая постепенно сужается?",
-                "answer": "шд",
-                "hint": "Showdown"
-            },
-            {
-                "question": "В каком режиме команда получает звезды за убийства, и побеждает та, у которой больше звезд?",
-                "answer": "Баунти",
-                "hint": "Bounty"
-            },
-            {
-                "question": "Как называется режим, где нужно защищать свою базу от робота и разрушить вражескую?",
-                "answer": "Осада",
-                "hint": "Его удалили"
-            },
-            {
-                "question": "В каком режиме нужно контролировать зону, которая приносит очки вашей команде?",
-                "answer": "Горячая зона",
-                "hint": "Горячая"
-            },
-            {
-                "question": "Как называется режим, где команда должна выиграть 2 раунда из 3, без возрождения?",
-                "answer": "Нокаут",
-                "hint": "Нок***"
-            },
-            {
-                "question": "В каком режиме нужно забить мяч в ворота соперника 2 раза?",
-                "answer": "Футбол",
-                "hint": "Brawl Ball"
-            },
-            {
-                "question": "Как называется одиночный режим, где 10 игроков сражаются друг с другом?",
-                "answer": "шд",
-                "hint": "Solo Showdown"
-            },
-            {
-                "question": "В каком режиме команда из 3 человек сражается с огромным роботом?",
-                "answer": "роборубка",
-                "hint": "Boss Fight"
-            },
-            {
-                "question": "Как называется режим, где нужно пройти 5 этапов, уничтожая город?",
-                "answer": "Город супергероев",
-                "hint": "Super City Rampage"
-            },
-            
-            # Вопросы о бойцах
-            {
-                "question": "Как зовут бойца, который имеет пса по имени Брюс?",
-                "answer": "Нита",
-                "hint": "Nita"
-            },
-            {
-                "question": "Какой боец стреляет двумя пистолетами?",
-                "answer": "Кольт",
-                "hint": "Colt"
-            },
-            {
-                "question": "Как зовут бойца, который кидает динамитные шашки и имеет сверхспособность 'Большая бомба'?",
-                "answer": "Динамайк",
-                "hint": "Dynamike"
-            },
-            {
-                "question": "Какой боец может лечить союзников и имеет дочку Джесси?",
-                "answer": "Пэм",
-                "hint": "Pam"
-            },
-            {
-                "question": "Как зовут бойца с чупиком, который телепортируется через свою сверхспособность?",
-                "answer": "Леон",
-                "hint": "Leon"
-            },
-            {
-                "question": "Какой боец юзает карты и имеет сверхспособность, которая создает клонов?",
-                "answer": "Тара",
-                "hint": "Tara"
-            },
-            {
-                "question": "Как зовут бойца с битой, который стреляет жевачками (кстати название нашего бота)?",
-                "answer": "Биби",
-                "hint": "Bibi"
-            },
-            {
-                "question": "Какой боец использует гитару и лечит союзников?",
-                "answer": "Поко",
-                "hint": "Poco"
-            },
-            {
-                "question": "Как зовут бойца ракетницой?",
-                "answer": "Брок",
-                "hint": "Brock"
-            },
-            {
-                "question": "Какой боец выглядет как бочка и имеет 2 заряда ульты?",
-                "answer": "Булл",
-                "hint": "Bull"
-            },
-            
-            # Вопросы об истории игры
-            {
-                "question": "В каком году вышла игра Brawl Stars в глобальном релизе?",
-                "answer": "2018",
-                "hint": "Год выхода 20XX"
-            },
-            {
-                "question": "Как назывался первый режим в Brawl Stars, который был удален?",
-                "answer": "осада",
-                "hint": "легендарная ос**а"
-            },
-            {
-                "question": "Какой легендарный боец был добавлен в игру первым?",
-                "answer": "Спайк",
-                "hint": "Кактус"
-            },
-            {
-                "question": "В каком обновлении добавили режим 'Королевская битва'?",
-                "answer": "Июль 2018",
-                "hint": "месяц лета 2018"
-            },
-            {
-                "question": "Как назывался первый скин для Шелли, добавленный в игру?",
-                "answer": "Бандитка Шелли",
-                "hint": "Бандит епта"
-            },
-            {
-                "question": "Сколько трофеев нужно было для открытия эмз в трофейной дороге стар?",
-                "answer": "8000",
-                "hint": "меньше 10000"
-            },
-            {
-                "question": "Какой боец был награжден за участие в бета-тесте Brawl Stars?",
-                "answer": "звездная шелли",
-                "hint": "Star Shelly"
-            },
-            {
-                "question": "В каком году Brawl Stars вышла из бета-тестирования?",
-                "answer": "2017",
-                "hint": "Год, когда игра была доступна только в Канаде"
-            },
-            {
-                "question": "Какой первый легендарный боец был добавлен в Brawl Stars после Спайка?",
-                "answer": "Кроу",
-                "hint": "Ворона"
-            },
-            {
-                "question": "Как назывался ивент, где можно было получить эксклюзивного бойца Галеон?",
-                "answer": "Ретро",
-                "hint": "Ностальгический ивент"
-            }
+            # Режимы
+            {"question": "В каком режиме нужно собрать 10 кристаллов, появляющихся в центре карты?", "answer": "Захват кристаллов", "hint": "Gem Grab"},
+            {"question": "Как называется режим, где нужно выбить всех врагов из зоны, которая постепенно сужается?", "answer": "Королевская битва", "hint": "Showdown"},
+            {"question": "В каком режиме команда получает звезды за убийства?", "answer": "Охота на звезды", "hint": "Bounty"},
+            {"question": "Как называется режим, где нужно защищать свою базу от робота?", "answer": "Осада", "hint": "Siege"},
+            {"question": "В каком режиме нужно контролировать зону, которая приносит очки?", "answer": "Горячая зона", "hint": "Hot Zone"},
+            {"question": "Как называется режим, где команда должна выиграть 2 раунда из 3?", "answer": "Нокаут", "hint": "Knockout"},
+            {"question": "В каком режиме нужно забить мяч в ворота соперника 2 раза?", "answer": "Футбол", "hint": "Brawl Ball"},
+            {"question": "Как называется одиночный режим, где 10 игроков сражаются друг с другом?", "answer": "Одиночный бой", "hint": "Solo Showdown"},
+            {"question": "В каком режиме команда из 3 человек сражается с огромным роботом?", "answer": "Нашествие монстров", "hint": "Boss Fight"},
+            # Бойцы
+            {"question": "Как зовут бойца, который мечет бумеранг и имеет пса по имени Брюс?", "answer": "Нита", "hint": "Nita"},
+            {"question": "Какой боец стреляет двумя пистолетами?", "answer": "Кольт", "hint": "Colt"},
+            {"question": "Как зовут бойца, который кидает динамитные шашки?", "answer": "Динамайк", "hint": "Dynamike"},
+            {"question": "Какой боец может лечить союзников и имеет птицу по имени Чико?", "answer": "Пэм", "hint": "Pam"},
+            {"question": "Как зовут бойца с дробовиком, который может становиться невидимым?", "answer": "Леон", "hint": "Leon"},
+            {"question": "Какой боец мечет карты и создает клонов?", "answer": "Тара", "hint": "Tara"},
+            {"question": "Как зовут бойца с битой, который отбивает снаряды?", "answer": "Биби", "hint": "Bibi"},
+            {"question": "Какой боец играет на флейте и лечит союзников?", "answer": "Поко", "hint": "Poco"},
+            {"question": "Как зовут бойца с реактивным ранцем?", "answer": "Брок", "hint": "Brock"},
+            {"question": "Какой боец бросает бочки и заряжается сквозь стены?", "answer": "Булл", "hint": "Bull"},
+            # История
+            {"question": "В каком году вышла игра Brawl Stars в глобальном релизе?", "answer": "2018", "hint": "Год выхода 20XX"},
+            {"question": "Какой легендарный боец был добавлен в игру первым?", "answer": "Спайк", "hint": "Кактус"},
+            {"question": "В каком обновлении добавили режим 'Королевская битва'?", "answer": "Июль 2018", "hint": "Лето 2018"},
+            {"question": "Какой боец был наградой за бета-тест Brawl Stars?", "answer": "Стар Шелли", "hint": "Star Shelly"},
+            {"question": "Какой первый легендарный боец был добавлен после Спайка?", "answer": "Кроу", "hint": "Ворона"}
         ]
 
-    # ==================== ОТСЛЕЖИВАНИЕ АКТИВНОСТИ ====================
+    def get_answer_variants(self, correct_answer: str):
+        variants = {
+            "захват кристаллов": ["gem grab", "гем граб", "кристаллы"],
+            "королевская битва": ["showdown", "шоудаун"],
+            "охота на звезды": ["bounty", "баунти"],
+            "осада": ["siege", "сидж"],
+            "горячая зона": ["hot zone", "хот зон"],
+            "нокаут": ["knockout", "нокдаун"],
+            "футбол": ["brawl ball", "бравл бол"],
+            "одиночный бой": ["solo", "соло"],
+            "нашествие монстров": ["boss fight", "босс файт"],
+            "нита": ["nita"],
+            "кольт": ["colt"],
+            "динамайк": ["dynamike"],
+            "пэм": ["pam"],
+            "леон": ["leon"],
+            "тара": ["tara"],
+            "биби": ["bibi"],
+            "поко": ["poco"],
+            "брок": ["brock"],
+            "булл": ["bull"],
+            "спайк": ["spike"],
+            "кроу": ["crow"]
+        }
+        return variants.get(correct_answer, [])
+
+    # ==================== ОБРАБОТКА СООБЩЕНИЙ (ТОЛЬКО ДЛЯ ОТВЕТОВ) ====================
 
     @commands.Cog.listener()
     async def on_message(self, message: disnake.Message):
-        """Начисление монет за сообщения и обработка загадок"""
+        """Обработка ответов на загадки и начисление монет за сообщения"""
         if message.author.bot:
             return
 
-        # Обработка загадок в специальном канале
+        # === ОБРАБОТКА ЗАГАДОК (ТОЛЬКО В КАНАЛЕ ЗАГАДОК) ===
         if message.channel.id == self.riddle_channel_id:
+            # Если нет активной загадки - ничего не делаем (ждем следующую по таймеру)
             if not self.active_riddle or self.riddle_solved:
-                # Если нет активной загадки, создаем новую
-                self.active_riddle = random.choice(self.riddles)
-                self.riddle_solved = False
-                
-                embed = disnake.Embed(
-                    title="🎯 НОВАЯ ЗАГАДКА BRAWL STARS! 🎯",
-                    description=f"**{self.active_riddle['question']}**\n\n💡 **Подсказка:** ||{self.active_riddle['hint']}||",
-                    color=disnake.Color.purple()
-                )
-                embed.set_footer(text="Ответь правильно и получи 150 монет!")
-                await message.channel.send(embed=embed)
                 return
 
             # Проверяем ответ
@@ -418,16 +285,16 @@ class EconomySystem(commands.Cog):
                     log_embed.add_field(name="💰 Награда", value="150 🪙", inline=True)
                     log_embed.add_field(name="❓ Вопрос", value=self.active_riddle['question'], inline=False)
                     await self.send_log(message.guild, log_embed)
-
-                    self.active_riddle = None
+                    
+                    # active_riddle остается, но помечен как solved
+                    # Следующая загадка появится через 30 минут по таймеру
                 return
 
-        # Начисление монет за сообщения (только не в канале загадок)
+        # === НАЧИСЛЕНИЕ МОНЕТ ЗА СООБЩЕНИЯ (В ДРУГИХ КАНАЛАХ) ===
         if not message.guild:
             return
 
         cursor = self.db.cursor()
-
         cursor.execute('SELECT last_message_time FROM economy WHERE user_id = ? AND guild_id = ?',
                        (message.author.id, message.guild.id))
         result = cursor.fetchone()
@@ -438,7 +305,6 @@ class EconomySystem(commands.Cog):
                 return
 
         coins_gain = random.randint(5, 15)
-
         await self.add_coins_for_activity(message.author.id, message.guild.id, coins_gain, "сообщение в чате")
 
         cursor.execute('''
@@ -454,34 +320,6 @@ class EconomySystem(commands.Cog):
             ''', (message.author.id, message.guild.id, self.get_current_time().isoformat()))
 
         self.db.commit()
-
-    def get_answer_variants(self, correct_answer: str):
-        """Возвращает варианты ответов для разных режимов/бойцов"""
-        variants = {
-            "захват кристаллов": ["gem grab", "гем граб", "кристаллы"],
-            "королевская битва": ["showdown", "шоудаун"],
-            "охота на звезды": ["bounty", "баунти"],
-            "осада": ["siege", "сидж"],
-            "горячая зона": ["hot zone", "хот зон"],
-            "нокаут": ["knockout", "нокдаун"],
-            "футбол": ["brawl ball", "бравл бол"],
-            "одиночный бой": ["solo", "соло"],
-            "нашествие монстров": ["boss fight", "босс файт"],
-            "город супергероев": ["super city", "супер сити"],
-            "нита": ["nita"],
-            "кольт": ["colt"],
-            "динамайк": ["dynamike"],
-            "пэм": ["pam"],
-            "леон": ["leon"],
-            "тара": ["tara"],
-            "биби": ["bibi"],
-            "поко": ["poco"],
-            "брок": ["brock"],
-            "булл": ["bull"],
-            "спайк": ["spike"],
-            "кроу": ["crow"]
-        }
-        return variants.get(correct_answer, [])
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: disnake.Member, before: disnake.VoiceState,
@@ -530,8 +368,6 @@ class EconomySystem(commands.Cog):
             interaction: disnake.ApplicationCommandInteraction,
             user: Optional[disnake.Member] = commands.Param(default=None, description="Пользователь")
     ):
-        """Показать баланс пользователя"""
-
         target_user = user or interaction.author
 
         cursor = self.db.cursor()
@@ -560,15 +396,8 @@ class EconomySystem(commands.Cog):
             color=disnake.Color.gold(),
             timestamp=self.get_current_time()
         )
-
         embed.set_thumbnail(url=target_user.display_avatar.url)
-
-        embed.add_field(
-            name="🪙 Монеты",
-            value=f"**{balance:,}** 🪙",
-            inline=False
-        )
-
+        embed.add_field(name="🪙 Монеты", value=f"**{balance:,}** 🪙", inline=False)
         embed.add_field(
             name="📊 Статистика",
             value=f"**Всего заработано:** {total_earned:,} 🪙\n"
@@ -577,13 +406,10 @@ class EconomySystem(commands.Cog):
                   f"**🎙️ В голосовых каналах:** {voice_hours}ч {voice_minutes}м",
             inline=False
         )
-
         await interaction.response.send_message(embed=embed)
 
     @commands.slash_command(name="daily", description="Получить ежедневную награду")
     async def daily(self, interaction: disnake.ApplicationCommandInteraction):
-        """Ежедневная награда (от 90 до 150 монет)"""
-
         cursor = self.db.cursor()
         cursor.execute('SELECT daily_last_claim FROM economy WHERE user_id = ? AND guild_id = ?',
                        (interaction.author.id, interaction.guild.id))
@@ -597,17 +423,15 @@ class EconomySystem(commands.Cog):
                 remaining = 86400 - time_passed
                 hours = int(remaining // 3600)
                 minutes = int((remaining % 3600) // 60)
-
                 embed = disnake.Embed(
                     title="⏰ Уже получили!",
-                    description=f"Вы уже получили ежедневную награду сегодня.\nСледующая награда через **{hours}ч {minutes}м**",
+                    description=f"Следующая награда через **{hours}ч {minutes}м**",
                     color=disnake.Color.orange()
                 )
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
 
         reward = random.randint(90, 150)
-
         await self.update_balance(interaction.author.id, interaction.guild.id, reward)
 
         cursor.execute('''
@@ -628,7 +452,6 @@ class EconomySystem(commands.Cog):
         embed.add_field(name="💰 Новый баланс",
                         value=f"{await self.get_balance(interaction.author.id, interaction.guild.id):,} 🪙",
                         inline=False)
-
         await interaction.response.send_message(embed=embed)
 
         log_embed = disnake.Embed(
@@ -642,8 +465,6 @@ class EconomySystem(commands.Cog):
 
     @commands.slash_command(name="work", description="Работа и получение монет")
     async def work(self, interaction: disnake.ApplicationCommandInteraction):
-        """Работа (от 90 до 150 монет, раз в 24 часа)"""
-
         cursor = self.db.cursor()
         cursor.execute('SELECT work_last_claim FROM economy WHERE user_id = ? AND guild_id = ?',
                        (interaction.author.id, interaction.guild.id))
@@ -657,31 +478,23 @@ class EconomySystem(commands.Cog):
                 remaining = 86400 - time_passed
                 hours = int(remaining // 3600)
                 minutes = int((remaining % 3600) // 60)
-
                 embed = disnake.Embed(
                     title="⏰ Уже работали!",
-                    description=f"Вы уже работали сегодня.\nСледующая работа через **{hours}ч {minutes}м**",
+                    description=f"Следующая работа через **{hours}ч {minutes}м**",
                     color=disnake.Color.orange()
                 )
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
 
-        # Работы в стиле Brawl Stars
         jobs = [
             "🏆 Участвовал в турнире по захвату кристаллов",
             "🎮 Стримил режим Нокаут на Twitch",
             "💪 Тренировался в Королевской битве",
             "🔧 Чинил кубки после режима Осада",
-            "🎨 Рисовал карты для режима Горячая зона",
-            "📹 Снимал гайды по режиму Футбол",
-            "🏅 Проводил тренировку по режиму Звездная битва",
-            "⚔️ Участвовал в клановой войне в режиме Нашествие",
-            "🎯 Собирал кубки в режиме Выталкивание",
-            "🤝 Помогал друзьям в режиме Контроль точек"
+            "🎨 Рисовал карты для режима Горячая зона"
         ]
 
         reward = random.randint(90, 150)
-
         await self.update_balance(interaction.author.id, interaction.guild.id, reward)
 
         cursor.execute('''
@@ -694,7 +507,6 @@ class EconomySystem(commands.Cog):
         self.db.commit()
 
         job = random.choice(jobs)
-
         embed = disnake.Embed(
             title="💼 Работа",
             description=f"**{job}**\nВы заработали **{reward}** 🪙",
@@ -704,204 +516,81 @@ class EconomySystem(commands.Cog):
         embed.add_field(name="💰 Новый баланс",
                         value=f"{await self.get_balance(interaction.author.id, interaction.guild.id):,} 🪙",
                         inline=False)
-
         await interaction.response.send_message(embed=embed)
-
-        log_embed = disnake.Embed(
-            title="💼 Работа",
-            color=disnake.Color.green(),
-            timestamp=self.get_current_time()
-        )
-        log_embed.add_field(name="👤 Пользователь", value=interaction.author.mention, inline=True)
-        log_embed.add_field(name="💰 Заработал", value=f"{reward} 🪙", inline=True)
-        log_embed.add_field(name="📝 Работа", value=job, inline=False)
-        await self.send_log(interaction.guild, log_embed)
 
     @commands.slash_command(name="shop", description="Магазин ролей")
     async def shop(self, interaction: disnake.ApplicationCommandInteraction):
-        """Показать магазин ролей"""
-
         cursor = self.db.cursor()
         cursor.execute('SELECT role_name, role_price, role_description FROM shop_roles')
         roles = cursor.fetchall()
 
         if not roles:
-            embed = disnake.Embed(
-                title="🏪 Магазин",
-                description="В магазине пока нет товаров",
-                color=disnake.Color.orange()
-            )
+            embed = disnake.Embed(title="🏪 Магазин", description="В магазине пока нет товаров", color=disnake.Color.orange())
             await interaction.response.send_message(embed=embed)
             return
 
-        embed = disnake.Embed(
-            title="🏪 Магазин ролей",
-            description="Купите себе уникальные роли за монеты!",
-            color=disnake.Color.gold(),
-            timestamp=self.get_current_time()
-        )
-
+        embed = disnake.Embed(title="🏪 Магазин ролей", description="Купите себе уникальные роли!", color=disnake.Color.gold())
         for role_name, price, desc in roles:
-            embed.add_field(
-                name=f"{role_name} - {price} 🪙",
-                value=desc,
-                inline=False
-            )
-
+            embed.add_field(name=f"{role_name} - {price} 🪙", value=desc, inline=False)
         embed.set_footer(text="Используйте /buy [роль] чтобы купить роль")
-
         await interaction.response.send_message(embed=embed)
 
     @commands.slash_command(name="buy", description="Купить роль в магазине")
-    async def buy(
-            self,
-            interaction: disnake.ApplicationCommandInteraction,
-            role_name: str = commands.Param(description="Название роли (Top4ik, Kaif, Kentik)")
-    ):
-        """Купить роль"""
-
+    async def buy(self, interaction: disnake.ApplicationCommandInteraction, role_name: str = commands.Param(description="Top4ik, Kaif или Kentik")):
         cursor = self.db.cursor()
-        cursor.execute('SELECT role_price, role_description, role_color FROM shop_roles WHERE role_name = ?',
-                       (role_name,))
+        cursor.execute('SELECT role_price, role_description, role_color FROM shop_roles WHERE role_name = ?', (role_name,))
         result = cursor.fetchone()
 
         if not result:
-            embed = disnake.Embed(
-                title="❌ Ошибка",
-                description=f"Роль **{role_name}** не найдена в магазине!\nДоступные роли: Top4ik, Kaif, Kentik",
-                color=disnake.Color.red()
-            )
+            embed = disnake.Embed(title="❌ Ошибка", description=f"Роль **{role_name}** не найдена!", color=disnake.Color.red())
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         price, description, color = result
-
         balance = await self.get_balance(interaction.author.id, interaction.guild.id)
 
         if balance < price:
-            embed = disnake.Embed(
-                title="❌ Недостаточно монет",
-                description=f"Вам нужно еще **{price - balance}** 🪙 для покупки роли **{role_name}**",
-                color=disnake.Color.red()
-            )
+            embed = disnake.Embed(title="❌ Недостаточно монет", description=f"Нужно еще **{price - balance}** 🪙", color=disnake.Color.red())
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        # Проверяем, не куплена ли уже роль
-        cursor.execute('SELECT * FROM purchased_roles WHERE user_id = ? AND guild_id = ? AND role_name = ?',
-                       (interaction.author.id, interaction.guild.id, role_name))
+        cursor.execute('SELECT * FROM purchased_roles WHERE user_id = ? AND role_name = ?', (interaction.author.id, role_name))
         if cursor.fetchone():
-            embed = disnake.Embed(
-                title="❌ Уже есть",
-                description=f"У вас уже есть роль **{role_name}**",
-                color=disnake.Color.red()
-            )
+            embed = disnake.Embed(title="❌ Уже есть", description=f"У вас уже есть роль **{role_name}**", color=disnake.Color.red())
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        # Ищем существующую роль или создаем новую
         role = disnake.utils.get(interaction.guild.roles, name=role_name)
-
         if not role:
-            try:
-                color_value = int(color.replace("0x", ""), 16) if color.startswith("0x") else int(color, 16)
-                
-                role = await interaction.guild.create_role(
-                    name=role_name,
-                    color=disnake.Color(color_value),
-                    reason=f"Создание роли для магазина",
-                    mentionable=True
-                )
-            except Exception as e:
-                print(f"Ошибка создания роли: {e}")
-                embed = disnake.Embed(
-                    title="❌ Ошибка",
-                    description="Не удалось создать роль. Обратитесь к администратору.",
-                    color=disnake.Color.red()
-                )
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-                return
+            color_value = int(color.replace("0x", ""), 16)
+            role = await interaction.guild.create_role(name=role_name, color=disnake.Color(color_value), mentionable=True)
 
-        # Выдаем роль пользователю
-        try:
-            await interaction.author.add_roles(role, reason=f"Покупка роли за {price} монет")
-        except Exception as e:
-            print(f"Ошибка выдачи роли: {e}")
-            embed = disnake.Embed(
-                title="❌ Ошибка",
-                description="Не удалось выдать роль. Возможно, у бота недостаточно прав.",
-                color=disnake.Color.red()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        # Снимаем монеты
+        await interaction.author.add_roles(role)
         await self.remove_balance(interaction.author.id, interaction.guild.id, price)
 
-        # Сохраняем в базу
-        cursor.execute('''
-            INSERT INTO purchased_roles (user_id, guild_id, role_name, purchase_date)
-            VALUES (?, ?, ?, ?)
-        ''', (interaction.author.id, interaction.guild.id, role_name, self.get_current_time().isoformat()))
+        cursor.execute('INSERT INTO purchased_roles (user_id, guild_id, role_name, purchase_date) VALUES (?, ?, ?, ?)',
+                       (interaction.author.id, interaction.guild.id, role_name, self.get_current_time().isoformat()))
         self.db.commit()
 
-        embed = disnake.Embed(
-            title="✅ Покупка успешна!",
-            description=f"Вы купили роль **{role_name}** за **{price}** 🪙",
-            color=disnake.Color.green(),
-            timestamp=self.get_current_time()
-        )
-        embed.add_field(name="💰 Новый баланс",
-                        value=f"{await self.get_balance(interaction.author.id, interaction.guild.id):,} 🪙",
-                        inline=False)
-        embed.add_field(name="🏷️ Описание", value=description, inline=False)
-
+        embed = disnake.Embed(title="✅ Покупка успешна!", description=f"Вы купили роль **{role_name}** за **{price}** 🪙", color=disnake.Color.green())
         await interaction.response.send_message(embed=embed)
-
-        log_embed = disnake.Embed(
-            title="🛒 Покупка роли",
-            color=disnake.Color.green(),
-            timestamp=self.get_current_time()
-        )
-        log_embed.add_field(name="👤 Пользователь", value=interaction.author.mention, inline=True)
-        log_embed.add_field(name="🎭 Роль", value=role_name, inline=True)
-        log_embed.add_field(name="💰 Цена", value=f"{price} 🪙", inline=True)
-        await self.send_log(interaction.guild, log_embed)
 
     @commands.slash_command(name="inventory", description="Показать ваши купленные роли")
     async def inventory(self, interaction: disnake.ApplicationCommandInteraction):
-        """Показать купленные роли"""
-
         cursor = self.db.cursor()
-        cursor.execute('SELECT role_name, purchase_date FROM purchased_roles WHERE user_id = ? AND guild_id = ?',
-                       (interaction.author.id, interaction.guild.id))
+        cursor.execute('SELECT role_name, purchase_date FROM purchased_roles WHERE user_id = ?', (interaction.author.id,))
         roles = cursor.fetchall()
 
         if not roles:
-            embed = disnake.Embed(
-                title="📦 Инвентарь",
-                description="У вас пока нет купленных ролей",
-                color=disnake.Color.orange()
-            )
+            embed = disnake.Embed(title="📦 Инвентарь", description="У вас пока нет купленных ролей", color=disnake.Color.orange())
             await interaction.response.send_message(embed=embed)
             return
 
-        embed = disnake.Embed(
-            title=f"📦 Инвентарь {interaction.author.display_name}",
-            color=disnake.Color.gold(),
-            timestamp=self.get_current_time()
-        )
-
+        embed = disnake.Embed(title=f"📦 Инвентарь {interaction.author.display_name}", color=disnake.Color.gold())
         embed.set_thumbnail(url=interaction.author.display_avatar.url)
-
         for role_name, purchase_date in roles:
             date = datetime.datetime.fromisoformat(purchase_date)
-            embed.add_field(
-                name=f"🎭 {role_name}",
-                value=f"Куплена: <t:{int(date.timestamp())}:R>",
-                inline=False
-            )
-
+            embed.add_field(name=f"🎭 {role_name}", value=f"Куплена: <t:{int(date.timestamp())}:R>", inline=False)
         await interaction.response.send_message(embed=embed)
 
 
