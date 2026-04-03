@@ -331,7 +331,7 @@ class LevelSystem(commands.Cog):
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: disnake.Member, before: disnake.VoiceState,
                                     after: disnake.VoiceState):
-        """Начисление XP за нахождение в голосовом канале"""
+        """Начисление XP за нахождение в голосовом канале (10 XP в час)"""
         cursor = self.db.cursor()
 
         if after.channel and not before.channel:
@@ -360,11 +360,16 @@ class LevelSystem(commands.Cog):
                 end_time = self.get_current_time()
                 duration = int((end_time - start_time).total_seconds())
 
-                if duration >= 60:
-                    xp_gain = duration // 60
+                if duration >= 60:  # Минимум 1 минута
+                    # 10 XP в час = 10/3600 XP в секунду
+                    # Округляем до целых, минимум 1 XP за сессию
+                    xp_gain = max(1, int(duration * 10 / 3600))
+                    
+                    # Ограничиваем максимум 100 XP за одну сессию
+                    xp_gain = min(xp_gain, 100)
 
                     leveled_up, old_level, new_level = await self.add_xp(
-                        member.id, member.guild.id, xp_gain, "voice"
+                        member.id, member.guild.id, xp_gain, "голосовой канал"
                     )
 
                     cursor.execute('''
@@ -385,7 +390,7 @@ class LevelSystem(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: disnake.Message):
-        """Начисление XP за сообщения"""
+        """Начисление XP за сообщения (15 XP за сообщение)"""
         if message.author.bot or not message.guild:
             return
 
@@ -407,6 +412,7 @@ class LevelSystem(commands.Cog):
                        (message.author.id, message.guild.id))
         result = cursor.fetchone()
 
+        # Защита от спама: не чаще 1 сообщения в 60 секунд
         is_in_voice = message.author.voice and message.author.voice.channel
 
         if not is_in_voice and result and result[0]:
@@ -419,16 +425,14 @@ class LevelSystem(commands.Cog):
             if (self.get_current_time() - last_time).total_seconds() < 30:
                 return
 
-        if is_in_voice:
-            xp_gain = random.randint(20, 50)
-        else:
-            xp_gain = random.randint(15, 40)
+        # 15 XP за сообщение (фиксированное значение)
+        xp_gain = 15
 
         leveled_up, old_level, new_level = await self.add_xp(
             message.author.id,
             message.guild.id,
             xp_gain,
-            "message"
+            "сообщение в чате"
         )
 
         cursor.execute('''
