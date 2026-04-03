@@ -1,14 +1,14 @@
 import disnake
 from disnake.ext import commands
 
-class RoleCommands(commands.Cog):
+class StaffCommands(commands.Cog):
     def __init__(self, bot):
-        self.bot = bot
+        self.bot = bot  # ← ВАЖНО! Сохраняем bot в self.bot
         
         # ID ролей и каналов
         self.ROLE_IVENT_ID = 1488807586512896141  # ID роли для ивентов
         self.ROLE_NEWS_ID = 1489685859811983430   # ID роли для новостей
-        self.CHANNEL_ID = 1489684413477290045     # ID канала, где работают команды
+        self.CHANNEL_ID = 1488807529852047360     # ID канала, где работают команды
 
     @commands.slash_command(name="give_ivent", description="Получить роль для участия в ивентах")
     async def give_ivent(self, interaction: disnake.ApplicationCommandInteraction):
@@ -228,4 +228,4 @@ class RoleCommands(commands.Cog):
 
 def setup(bot):
     """Регистрация кога"""
-    bot.add_cog(RoleCommands(bot))
+    bot.add_cog(StaffCommands(bot))
