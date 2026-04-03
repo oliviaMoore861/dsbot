@@ -17,110 +17,10 @@ class EconomySystem(commands.Cog):
         self.check_work_reset.start()
         self.active_riddle = None
         self.riddle_solved = False
-
-        # Загадки о режимах Brawl Stars
-        self.riddles = [
-            {
-                "question": "В каком режиме нужно собрать и удержать 10 кристаллов, чтобы победить?",
-                "answer": "Захват кристаллов",
-                "hint": "Этот режим также называют Gem Grab"
-            },
-            {
-                "question": "Как называется режим, где нужно выбить всех врагов из зоны, которая постепенно сужается?",
-                "answer": "Королевская битва",
-                "hint": "Последний выживший побеждает"
-            },
-            {
-                "question": "В каком режиме нужно набрать больше всех очков, выбивая врагов и собирая звездочки?",
-                "answer": "Охота на звезды",
-                "hint": "Кто больше звезд наберет, тот и победил"
-            },
-            {
-                "question": "Как называется режим, где нужно защищать свою крепость и уничтожить вражескую?",
-                "answer": "Осада",
-                "hint": "Нужно собирать болты и призывать робота"
-            },
-            {
-                "question": "В каком режиме нужно контролировать зону, которая постепенно заполняется?",
-                "answer": "Горячая зона",
-                "hint": "Чем дольше стоишь в зоне, тем больше очков"
-            },
-            {
-                "question": "Как называется командный режим, где нужно выбить всех врагов, и нет возможности возродиться?",
-                "answer": "Нокаут",
-                "hint": "Кто выиграл 2 раунда, тот победил"
-            },
-            {
-                "question": "В каком режиме нужно доставить мяч в ворота соперника?",
-                "answer": "Футбол",
-                "hint": "Brawl Ball"
-            },
-            {
-                "question": "Как называется режим, где нужно собирать банки с энергетиком и выживать?",
-                "answer": "Одиночный бой",
-                "hint": "Solo Showdown"
-            },
-            {
-                "question": "В каком режиме команда из 3 человек сражается с боссом?",
-                "answer": "Нашествие монстров",
-                "hint": "Нужно уничтожить огромного робота"
-            },
-            {
-                "question": "Как называется режим, где нужно пройти 5 этапов с разными заданиями?",
-                "answer": "Город супергероев",
-                "hint": "Super City Rampage"
-            },
-            {
-                "question": "В каком режиме нужно захватывать и удерживать точки на карте?",
-                "answer": "Контроль точек",
-                "hint": "Захватывай и удерживай точки"
-            },
-            {
-                "question": "Как называется режим, где 5 команд по 2 человека сражаются друг с другом?",
-                "answer": "Дуэты",
-                "hint": "Duo Showdown"
-            },
-            {
-                "question": "В каком режиме нужно первым собрать 20 звезд, убивая врагов?",
-                "answer": "Звездная битва",
-                "hint": "Bounty"
-            },
-            {
-                "question": "Как называется режим, где нужно нанести наибольший урон боссу?",
-                "answer": "Битва с боссом",
-                "hint": "Boss Fight"
-            },
-            {
-                "question": "В каком режиме нужно защищать свою базу от волн врагов?",
-                "answer": "Защита базы",
-                "hint": "Siege"
-            },
-            {
-                "question": "Как называется режим, где нужно выбить врагов за пределы арены?",
-                "answer": "Выталкивание",
-                "hint": "Нужно вытолкнуть врагов с платформы"
-            },
-            {
-                "question": "В каком режиме нужно собрать 160 очков, контролируя зоны?",
-                "answer": "Горячая зона",
-                "hint": "Hot Zone"
-            },
-            {
-                "question": "Как называется режим, где нужно выиграть 3 раунда из 5?",
-                "answer": "Бой насмерть",
-                "hint": "Last Stand"
-            },
-            {
-                "question": "В каком режиме нужно продержаться как можно дольше против бесконечных врагов?",
-                "answer": "Выживание",
-                "hint": "Survival"
-            },
-            {
-                "question": "Как называется режим, где нужно быстрее всех уничтожить цель?",
-                "answer": "Скоростная атака",
-                "hint": "Rapid Attack"
-            }
-        ]
+        self.last_riddle_time = None
+        
+        # Запускаем таск для автоматической смены загадки каждые 30 минут
+        self.auto_riddle.start()
 
     def init_database(self):
         """Инициализация базы данных"""
@@ -261,6 +161,41 @@ class EconomySystem(commands.Cog):
             await self.send_log(await self.bot.fetch_guild(guild_id), log_embed)
 
     @tasks.loop(minutes=30)
+    async def auto_riddle(self):
+        """Автоматическая публикация новой загадки каждые 30 минут"""
+        await asyncio.sleep(5)  # Ждем запуска бота
+        while True:
+            try:
+                channel = self.bot.get_channel(self.riddle_channel_id)
+                if channel:
+                    # Выбираем новую случайную загадку
+                    self.active_riddle = random.choice(self.riddles)
+                    self.riddle_solved = False
+                    self.last_riddle_time = self.get_current_time()
+                    
+                    embed = disnake.Embed(
+                        title="🎯 НОВАЯ ЗАГАДКА BRAWL STARS! 🎯",
+                        description=f"**{self.active_riddle['question']}**\n\n💡 **Подсказка:** ||{self.active_riddle['hint']}||",
+                        color=disnake.Color.purple()
+                    )
+                    embed.set_footer(text="Ответь правильно и получи 150 монет! | Следующая загадка через 30 минут")
+                    await channel.send(embed=embed)
+                    
+                    # Логируем новую загадку
+                    log_embed = disnake.Embed(
+                        title="🎯 Новая загадка",
+                        color=disnake.Color.blue(),
+                        timestamp=self.get_current_time()
+                    )
+                    log_embed.add_field(name="❓ Вопрос", value=self.active_riddle['question'], inline=False)
+                    await self.send_log(channel.guild, log_embed)
+                    
+            except Exception as e:
+                print(f"Ошибка при отправке загадки: {e}")
+            
+            await asyncio.sleep(1800)  # 30 минут
+
+    @tasks.loop(minutes=30)
     async def check_daily_reset(self):
         pass
 
@@ -268,12 +203,227 @@ class EconomySystem(commands.Cog):
     async def check_work_reset(self):
         pass
 
+    # ==================== НОВЫЕ ЗАГАДКИ ПРО BRAWL STARS ====================
+    
+    @property
+    def riddles(self):
+        """Коллекция загадок о Brawl Stars"""
+        return [
+            # Вопросы о режимах
+            {
+                "question": "В каком режиме нужно собрать 10 кристаллов, появляющихся в центре карты?",
+                "answer": "Захват кристаллов",
+                "hint": "Gem Grab"
+            },
+            {
+                "question": "Как называется режим, где нужно выбить всех врагов из зоны, которая постепенно сужается?",
+                "answer": "шд",
+                "hint": "Showdown"
+            },
+            {
+                "question": "В каком режиме команда получает звезды за убийства, и побеждает та, у которой больше звезд?",
+                "answer": "Баунти",
+                "hint": "Bounty"
+            },
+            {
+                "question": "Как называется режим, где нужно защищать свою базу от робота и разрушить вражескую?",
+                "answer": "Осада",
+                "hint": "Его удалили"
+            },
+            {
+                "question": "В каком режиме нужно контролировать зону, которая приносит очки вашей команде?",
+                "answer": "Горячая зона",
+                "hint": "Горячая"
+            },
+            {
+                "question": "Как называется режим, где команда должна выиграть 2 раунда из 3, без возрождения?",
+                "answer": "Нокаут",
+                "hint": "Нок***"
+            },
+            {
+                "question": "В каком режиме нужно забить мяч в ворота соперника 2 раза?",
+                "answer": "Футбол",
+                "hint": "Brawl Ball"
+            },
+            {
+                "question": "Как называется одиночный режим, где 10 игроков сражаются друг с другом?",
+                "answer": "шд",
+                "hint": "Solo Showdown"
+            },
+            {
+                "question": "В каком режиме команда из 3 человек сражается с огромным роботом?",
+                "answer": "роборубка",
+                "hint": "Boss Fight"
+            },
+            {
+                "question": "Как называется режим, где нужно пройти 5 этапов, уничтожая город?",
+                "answer": "Город супергероев",
+                "hint": "Super City Rampage"
+            },
+            
+            # Вопросы о бойцах
+            {
+                "question": "Как зовут бойца, который имеет пса по имени Брюс?",
+                "answer": "Нита",
+                "hint": "Nita"
+            },
+            {
+                "question": "Какой боец стреляет двумя пистолетами?",
+                "answer": "Кольт",
+                "hint": "Colt"
+            },
+            {
+                "question": "Как зовут бойца, который кидает динамитные шашки и имеет сверхспособность 'Большая бомба'?",
+                "answer": "Динамайк",
+                "hint": "Dynamike"
+            },
+            {
+                "question": "Какой боец может лечить союзников и имеет дочку Джесси?",
+                "answer": "Пэм",
+                "hint": "Pam"
+            },
+            {
+                "question": "Как зовут бойца с чупиком, который телепортируется через свою сверхспособность?",
+                "answer": "Леон",
+                "hint": "Leon"
+            },
+            {
+                "question": "Какой боец юзает карты и имеет сверхспособность, которая создает клонов?",
+                "answer": "Тара",
+                "hint": "Tara"
+            },
+            {
+                "question": "Как зовут бойца с битой, который стреляет жевачками (кстати название нашего бота)?",
+                "answer": "Биби",
+                "hint": "Bibi"
+            },
+            {
+                "question": "Какой боец использует гитару и лечит союзников?",
+                "answer": "Поко",
+                "hint": "Poco"
+            },
+            {
+                "question": "Как зовут бойца ракетницой?",
+                "answer": "Брок",
+                "hint": "Brock"
+            },
+            {
+                "question": "Какой боец выглядет как бочка и имеет 2 заряда ульты?",
+                "answer": "Булл",
+                "hint": "Bull"
+            },
+            
+            # Вопросы об истории игры
+            {
+                "question": "В каком году вышла игра Brawl Stars в глобальном релизе?",
+                "answer": "2018",
+                "hint": "Год выхода 20XX"
+            },
+            {
+                "question": "Как назывался первый режим в Brawl Stars, который был удален?",
+                "answer": "осада",
+                "hint": "легендарная ос**а"
+            },
+            {
+                "question": "Какой легендарный боец был добавлен в игру первым?",
+                "answer": "Спайк",
+                "hint": "Кактус"
+            },
+            {
+                "question": "В каком обновлении добавили режим 'Королевская битва'?",
+                "answer": "Июль 2018",
+                "hint": "месяц лета 2018"
+            },
+            {
+                "question": "Как назывался первый скин для Шелли, добавленный в игру?",
+                "answer": "Бандитка Шелли",
+                "hint": "Бандит епта"
+            },
+            {
+                "question": "Сколько трофеев нужно было для открытия эмз в трофейной дороге стар?",
+                "answer": "8000",
+                "hint": "меньше 10000"
+            },
+            {
+                "question": "Какой боец был награжден за участие в бета-тесте Brawl Stars?",
+                "answer": "звездная шелли",
+                "hint": "Star Shelly"
+            },
+            {
+                "question": "В каком году Brawl Stars вышла из бета-тестирования?",
+                "answer": "2017",
+                "hint": "Год, когда игра была доступна только в Канаде"
+            },
+            {
+                "question": "Какой первый легендарный боец был добавлен в Brawl Stars после Спайка?",
+                "answer": "Кроу",
+                "hint": "Ворона"
+            },
+            {
+                "question": "Как назывался ивент, где можно было получить эксклюзивного бойца Галеон?",
+                "answer": "Ретро",
+                "hint": "Ностальгический ивент"
+            }
+        ]
+
     # ==================== ОТСЛЕЖИВАНИЕ АКТИВНОСТИ ====================
 
     @commands.Cog.listener()
     async def on_message(self, message: disnake.Message):
-        """Начисление монет за сообщения"""
-        if message.author.bot or not message.guild:
+        """Начисление монет за сообщения и обработка загадок"""
+        if message.author.bot:
+            return
+
+        # Обработка загадок в специальном канале
+        if message.channel.id == self.riddle_channel_id:
+            if not self.active_riddle or self.riddle_solved:
+                # Если нет активной загадки, создаем новую
+                self.active_riddle = random.choice(self.riddles)
+                self.riddle_solved = False
+                
+                embed = disnake.Embed(
+                    title="🎯 НОВАЯ ЗАГАДКА BRAWL STARS! 🎯",
+                    description=f"**{self.active_riddle['question']}**\n\n💡 **Подсказка:** ||{self.active_riddle['hint']}||",
+                    color=disnake.Color.purple()
+                )
+                embed.set_footer(text="Ответь правильно и получи 150 монет!")
+                await message.channel.send(embed=embed)
+                return
+
+            # Проверяем ответ
+            answer_lower = message.content.lower().strip()
+            correct_answer_lower = self.active_riddle['answer'].lower()
+
+            if answer_lower == correct_answer_lower or answer_lower in self.get_answer_variants(correct_answer_lower):
+                if not self.riddle_solved:
+                    self.riddle_solved = True
+
+                    await self.update_balance(message.author.id, message.guild.id, 150)
+
+                    embed = disnake.Embed(
+                        title="✅ ПРАВИЛЬНЫЙ ОТВЕТ! ✅",
+                        description=f"{message.author.mention} правильно ответил на загадку!\n\n"
+                                   f"**Ответ:** {self.active_riddle['answer']}\n\n"
+                                   f"🎉 Вы получили **150** 🪙!",
+                        color=disnake.Color.green()
+                    )
+                    await message.channel.send(embed=embed)
+
+                    log_embed = disnake.Embed(
+                        title="🎯 Решена загадка",
+                        color=disnake.Color.green(),
+                        timestamp=self.get_current_time()
+                    )
+                    log_embed.add_field(name="👤 Пользователь", value=message.author.mention, inline=True)
+                    log_embed.add_field(name="💰 Награда", value="150 🪙", inline=True)
+                    log_embed.add_field(name="❓ Вопрос", value=self.active_riddle['question'], inline=False)
+                    await self.send_log(message.guild, log_embed)
+
+                    self.active_riddle = None
+                return
+
+        # Начисление монет за сообщения (только не в канале загадок)
+        if not message.guild:
             return
 
         cursor = self.db.cursor()
@@ -304,6 +454,34 @@ class EconomySystem(commands.Cog):
             ''', (message.author.id, message.guild.id, self.get_current_time().isoformat()))
 
         self.db.commit()
+
+    def get_answer_variants(self, correct_answer: str):
+        """Возвращает варианты ответов для разных режимов/бойцов"""
+        variants = {
+            "захват кристаллов": ["gem grab", "гем граб", "кристаллы"],
+            "королевская битва": ["showdown", "шоудаун"],
+            "охота на звезды": ["bounty", "баунти"],
+            "осада": ["siege", "сидж"],
+            "горячая зона": ["hot zone", "хот зон"],
+            "нокаут": ["knockout", "нокдаун"],
+            "футбол": ["brawl ball", "бравл бол"],
+            "одиночный бой": ["solo", "соло"],
+            "нашествие монстров": ["boss fight", "босс файт"],
+            "город супергероев": ["super city", "супер сити"],
+            "нита": ["nita"],
+            "кольт": ["colt"],
+            "динамайк": ["dynamike"],
+            "пэм": ["pam"],
+            "леон": ["leon"],
+            "тара": ["tara"],
+            "биби": ["bibi"],
+            "поко": ["poco"],
+            "брок": ["brock"],
+            "булл": ["bull"],
+            "спайк": ["spike"],
+            "кроу": ["crow"]
+        }
+        return variants.get(correct_answer, [])
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: disnake.Member, before: disnake.VoiceState,
@@ -609,6 +787,7 @@ class EconomySystem(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
+        # Проверяем, не куплена ли уже роль
         cursor.execute('SELECT * FROM purchased_roles WHERE user_id = ? AND guild_id = ? AND role_name = ?',
                        (interaction.author.id, interaction.guild.id, role_name))
         if cursor.fetchone():
@@ -620,22 +799,46 @@ class EconomySystem(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
+        # Ищем существующую роль или создаем новую
         role = disnake.utils.get(interaction.guild.roles, name=role_name)
 
         if not role:
-            color_value = int(color.replace("0x", ""), 16) if color.startswith("0x") else int(color, 16)
+            try:
+                color_value = int(color.replace("0x", ""), 16) if color.startswith("0x") else int(color, 16)
+                
+                role = await interaction.guild.create_role(
+                    name=role_name,
+                    color=disnake.Color(color_value),
+                    reason=f"Создание роли для магазина",
+                    mentionable=True
+                )
+            except Exception as e:
+                print(f"Ошибка создания роли: {e}")
+                embed = disnake.Embed(
+                    title="❌ Ошибка",
+                    description="Не удалось создать роль. Обратитесь к администратору.",
+                    color=disnake.Color.red()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
 
-            role = await interaction.guild.create_role(
-                name=role_name,
-                color=disnake.Color(color_value),
-                reason=f"Создание роли для магазина",
-                mentionable=True
+        # Выдаем роль пользователю
+        try:
+            await interaction.author.add_roles(role, reason=f"Покупка роли за {price} монет")
+        except Exception as e:
+            print(f"Ошибка выдачи роли: {e}")
+            embed = disnake.Embed(
+                title="❌ Ошибка",
+                description="Не удалось выдать роль. Возможно, у бота недостаточно прав.",
+                color=disnake.Color.red()
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
 
-        await interaction.author.add_roles(role, reason=f"Покупка роли за {price} монет")
-
+        # Снимаем монеты
         await self.remove_balance(interaction.author.id, interaction.guild.id, price)
 
+        # Сохраняем в базу
         cursor.execute('''
             INSERT INTO purchased_roles (user_id, guild_id, role_name, purchase_date)
             VALUES (?, ?, ?, ?)
@@ -700,97 +903,6 @@ class EconomySystem(commands.Cog):
             )
 
         await interaction.response.send_message(embed=embed)
-
-    @commands.Cog.listener()
-    async def on_message(self, message: disnake.Message):
-        """Обработка загадок в специальном канале"""
-        if message.author.bot:
-            return
-
-        if message.channel.id == self.riddle_channel_id:
-            if not self.active_riddle or self.riddle_solved:
-                self.active_riddle = random.choice(self.riddles)
-                self.riddle_solved = False
-
-                embed = disnake.Embed(
-                    title="🎯 НОВАЯ ЗАГАДКА BRAWL STARS! 🎯",
-                    description=f"**{self.active_riddle['question']}**\n\n💡 Подсказка: ||{self.active_riddle['hint']}||",
-                    color=disnake.Color.purple()
-                )
-                embed.set_footer(text="Ответь правильно и получи 100 монет!")
-                await message.channel.send(embed=embed)
-                return
-
-            answer_lower = message.content.lower().strip()
-            correct_answer_lower = self.active_riddle['answer'].lower()
-
-            # Варианты ответов для режимов
-            possible_answers = [correct_answer_lower]
-
-            # Добавляем синонимы и варианты написания
-            if correct_answer_lower == "захват кристаллов":
-                possible_answers.extend(["gem grab", "гем граб", "кристаллы"])
-            elif correct_answer_lower == "королевская битва":
-                possible_answers.extend(["showdown", "шоудаун", "королевская"])
-            elif correct_answer_lower == "охота на звезды":
-                possible_answers.extend(["bounty", "баунти", "звездная охота"])
-            elif correct_answer_lower == "осада":
-                possible_answers.extend(["siege", "сидж"])
-            elif correct_answer_lower == "горячая зона":
-                possible_answers.extend(["hot zone", "хот зон", "hotzone"])
-            elif correct_answer_lower == "нокаут":
-                possible_answers.extend(["knockout", "нокдаун"])
-            elif correct_answer_lower == "футбол":
-                possible_answers.extend(["brawl ball", "бравл бол", "brawlball"])
-            elif correct_answer_lower == "одиночный бой":
-                possible_answers.extend(["solo", "соло", "одиночный"])
-            elif correct_answer_lower == "нашествие монстров":
-                possible_answers.extend(["boss fight", "босс файт", "босс"])
-            elif correct_answer_lower == "город супергероев":
-                possible_answers.extend(["super city", "супер сити"])
-            elif correct_answer_lower == "контроль точек":
-                possible_answers.extend(["control", "контроль"])
-            elif correct_answer_lower == "дуэты":
-                possible_answers.extend(["duo", "дуо", "duo showdown"])
-            elif correct_answer_lower == "звездная битва":
-                possible_answers.extend(["star battle", "звездная"])
-            elif correct_answer_lower == "битва с боссом":
-                possible_answers.extend(["boss", "босс", "boss fight"])
-            elif correct_answer_lower == "защита базы":
-                possible_answers.extend(["base defense", "защита"])
-            elif correct_answer_lower == "выталкивание":
-                possible_answers.extend(["push", "пуш", "выталкивание"])
-            elif correct_answer_lower == "бой насмерть":
-                possible_answers.extend(["last stand", "ласт стенд"])
-            elif correct_answer_lower == "выживание":
-                possible_answers.extend(["survival", "survive"])
-            elif correct_answer_lower == "скоростная атака":
-                possible_answers.extend(["rapid", "рапид"])
-
-            if answer_lower in possible_answers:
-                if not self.riddle_solved:
-                    self.riddle_solved = True
-
-                    await self.update_balance(message.author.id, message.guild.id, 100)
-
-                    embed = disnake.Embed(
-                        title="✅ ПРАВИЛЬНЫЙ ОТВЕТ! ✅",
-                        description=f"{message.author.mention} правильно ответил на загадку!\n\n**Ответ:** {self.active_riddle['answer']}\n\n🎉 Вы получили **100** 🪙!",
-                        color=disnake.Color.green()
-                    )
-                    await message.channel.send(embed=embed)
-
-                    log_embed = disnake.Embed(
-                        title="🎯 Решена загадка",
-                        color=disnake.Color.green(),
-                        timestamp=self.get_current_time()
-                    )
-                    log_embed.add_field(name="👤 Пользователь", value=message.author.mention, inline=True)
-                    log_embed.add_field(name="💰 Награда", value="100 🪙", inline=True)
-                    log_embed.add_field(name="❓ Вопрос", value=self.active_riddle['question'], inline=False)
-                    await self.send_log(message.guild, log_embed)
-
-                    self.active_riddle = None
 
 
 def setup(bot):
