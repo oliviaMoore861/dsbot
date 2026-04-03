@@ -363,10 +363,10 @@ class LevelSystem(commands.Cog):
                 if duration >= 60:  # Минимум 1 минута
                     # 10 XP в час = 10/3600 XP в секунду
                     # Округляем до целых, минимум 1 XP за сессию
-                    xp_gain = max(1, int(duration * 10 / 3600))
+                    xp_gain = max(1, int(duration * 10 / 60))
                     
                     # Ограничиваем максимум 100 XP за одну сессию
-                    xp_gain = min(xp_gain, 100)
+                    xp_gain = min(xp_gain, 1000)
 
                     leveled_up, old_level, new_level = await self.add_xp(
                         member.id, member.guild.id, xp_gain, "голосовой канал"
